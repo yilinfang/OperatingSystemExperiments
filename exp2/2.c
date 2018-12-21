@@ -34,7 +34,7 @@ void *thread2(void *temp2)
         sum += i;
         V(sem1);
     };
-    P(sem2);
+    P(sem2); //等待打印工作完成
     pthread_cancel(subp1); //结束线程1
 };
 int main()
