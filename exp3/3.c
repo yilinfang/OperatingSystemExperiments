@@ -10,12 +10,16 @@
 #include <wait.h>
 #include <memory.h>
 #include <string.h>
-#define P(x)          \
-    {                 \
+
+#define BLOCK_SIZE 512
+#define BUFFER_SIZE 8
+
+#define P(x)         \
+    {                \
         sem_wait(x); \
     }
-#define V(x)          \
-    {                 \
+#define V(x)         \
+    {                \
         sem_post(x); \
     }
 
@@ -23,7 +27,7 @@ sem_t *sem1, *sem2;
 pid_t pid1, pid2;
 int shmid_b, shmid_s, shmid_e, shmid_sem1, shmid_sem2, shmid_status;
 int *start, *end, *status;
-char* buffer;
+char *buffer;
 int main(int argc, char const *argv[])
 {
     if (argc <= 2)
@@ -32,34 +36,32 @@ int main(int argc, char const *argv[])
     }
     FILE *input = fopen(argv[1], "rb");
     FILE *output = fopen(argv[2], "wb");
-    shmid_b = shmget(IPC_PRIVATE, 8 * 513 * sizeof(char), IPC_CREAT | 0666);
+    shmid_b = shmget(IPC_PRIVATE, BUFFER_SIZE * (BLOCK_SIZE + 1) * sizeof(char), IPC_CREAT | 0666);
     shmid_s = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     shmid_e = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     shmid_status = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     shmid_sem1 = shmget(IPC_PRIVATE, sizeof(sem_t), IPC_CREAT | 0666);
     shmid_sem2 = shmget(IPC_PRIVATE, sizeof(sem_t), IPC_CREAT | 0666);
-    buffer = (char*)shmat(shmid_b, 0, 0);
-    start = (int*)shmat(shmid_s, 0, 0);
-    end = (int*)shmat(shmid_e, 0, 0);
-    status = (int*)shmat(shmid_status, 0, 0);
-    sem1 = (sem_t*)shmat(shmid_sem1, 0, 0);
-    sem2 = (sem_t*)shmat(shmid_sem2, 0, 0);
+    buffer = (char *)shmat(shmid_b, 0, 0);
+    start = (int *)shmat(shmid_s, 0, 0);
+    end = (int *)shmat(shmid_e, 0, 0);
+    status = (int *)shmat(shmid_status, 0, 0);
+    sem1 = (sem_t *)shmat(shmid_sem1, 0, 0);
+    sem2 = (sem_t *)shmat(shmid_sem2, 0, 0);
     *start = 0;
     *end = 0;
     sem_init(sem1, 1, 0);
-    sem_init(sem2, 1, 7);
+    sem_init(sem2, 1, BUFFER_SIZE - 1);
     *status = 1;
     if ((pid1 = fork()) == 0)
     {
-        char block[513];
+        char block[BLOCK_SIZE + 1];
         while (*status || *start != *end)
         {
             P(sem1);
-            memcpy(block, buffer + *start * 513, 513 * sizeof(char));
+            memcpy(block, buffer + *start * (BLOCK_SIZE + 1), (BLOCK_SIZE + 1) * sizeof(char));
             fwrite(block, 1, strlen(block), output);
-            //printf("%s", block);
-            //sleep(0.5);
-            *start = (*start + 1) % 8;
+            *start = (*start + 1) % BUFFER_SIZE;
             V(sem2);
         }
         return 1;
@@ -67,31 +69,28 @@ int main(int argc, char const *argv[])
     else if ((pid2 = fork()) == 0)
     {
         int c;
-        char block[513];
-        c = fread(block, 1, 512, input);
+        char block[BLOCK_SIZE + 1];
+        c = fread(block, 1, BLOCK_SIZE, input);
         block[c] = '\0';
-        while (c == 512)
+        while (c == BLOCK_SIZE)
         {
             P(sem2);
-            memcpy(buffer + *end * 513, block, 513 * sizeof(char));
-            *end = (*end + 1) % 8;
+            memcpy(buffer + *end * (BLOCK_SIZE + 1), block, (BLOCK_SIZE + 1) * sizeof(char));
+            *end = (*end + 1) % BUFFER_SIZE;
             V(sem1);
-            c = fread(block, 1, 512, input);
+            c = fread(block, 1, BLOCK_SIZE, input);
             block[c] = '\0';
-            //printf("%d\n", c);
         }
         P(sem2);
-        memcpy(buffer + *end * 513, block, 513 * sizeof(char));
-        *end = (*end + 1) % 8;
+        memcpy(buffer + *end * (BLOCK_SIZE + 1), block, (BLOCK_SIZE + 1) * sizeof(char));
+        *end = (*end + 1) % BUFFER_SIZE;
         V(sem1);
         *status = 0;
         return 2;
     }
-    int end;
-    wait(&end);
-    printf("end:%d\n", end);
-    wait(&end);
-    printf("end:%d\n", end);
+    int pid_end;
+    wait(&pid_end);
+    wait(&pid_end);
     sem_destroy(sem1);
     sem_destroy(sem2);
     fclose(input);
