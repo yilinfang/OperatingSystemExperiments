@@ -23,11 +23,6 @@
         sem_post(x); \
     }
 
-sem_t *sem1, *sem2;
-pid_t pid1, pid2;
-int shmid_b, shmid_s, shmid_e, shmid_sem1, shmid_sem2, shmid_status;
-int *start, *end, *status;
-char *buffer;
 int main(int argc, char const *argv[])
 {
     if (argc <= 2)
@@ -36,6 +31,11 @@ int main(int argc, char const *argv[])
     }
     FILE *input = fopen(argv[1], "rb");
     FILE *output = fopen(argv[2], "wb");
+    sem_t *sem1, *sem2;
+    pid_t pid1, pid2;
+    int shmid_b, shmid_s, shmid_e, shmid_sem1, shmid_sem2, shmid_status;
+    int *start, *end, *status;
+    char *buffer;
     shmid_b = shmget(IPC_PRIVATE, BUFFER_SIZE * (BLOCK_SIZE + 1) * sizeof(char), IPC_CREAT | 0666);
     shmid_s = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
     shmid_e = shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666);
