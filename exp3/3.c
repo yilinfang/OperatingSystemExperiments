@@ -11,7 +11,7 @@
 #include <memory.h>
 #include <string.h>
 
-#define BLOCK_SIZE 512
+#define BLOCK_SIZE 4096
 #define BUFFER_SIZE 8
 
 #define P(x)         \
@@ -35,7 +35,7 @@ int main(int argc, char const *argv[])
     pid_t pid1, pid2;
     int shmid_b[BUFFER_SIZE], shmid_s, shmid_e, shmid_sem1, shmid_sem2, shmid_status;
     int *start, *end, *status;
-    for(int i = 0; i < BUFFER_SIZE; i++)
+    for (int i = 0; i < BUFFER_SIZE; i++)
     {
         shmid_b[i] = shmget(IPC_PRIVATE, (BLOCK_SIZE + 1) * sizeof(char), IPC_CREAT | 0666);
     }
@@ -57,12 +57,15 @@ int main(int argc, char const *argv[])
     if ((pid1 = fork()) == 0)
     {
         char block[BLOCK_SIZE + 1];
-        char* buffer;
+        char *buffer[BUFFER_SIZE];
+        for (int i = 0; i < BUFFER_SIZE; i++)
+        {
+            buffer[i] = (char *)shmat(shmid_b[i], 0, 0);
+        }
         while (*status || *start != *end)
         {
             P(sem1);
-            buffer = (char *)shmat(shmid_b[*start], 0, 0);
-            memcpy(block, buffer, (BLOCK_SIZE + 1) * sizeof(char));
+            memcpy(block, buffer[*start], (BLOCK_SIZE + 1) * sizeof(char));
             fwrite(block, 1, strlen(block), output);
             *start = (*start + 1) % BUFFER_SIZE;
             V(sem2);
@@ -72,23 +75,25 @@ int main(int argc, char const *argv[])
     else if ((pid2 = fork()) == 0)
     {
         int c;
-        char *buffer;
+        char *buffer[BUFFER_SIZE];
+        for (int i = 0; i < BUFFER_SIZE; i++)
+        {
+            buffer[i] = (char *)shmat(shmid_b[i], 0, 0);
+        }
         char block[BLOCK_SIZE + 1];
         c = fread(block, 1, BLOCK_SIZE, input);
         block[c] = '\0';
         while (c == BLOCK_SIZE)
         {
             P(sem2);
-            buffer = (char *)shmat(shmid_b[*end], 0, 0);
-            memcpy(buffer, block, (BLOCK_SIZE + 1) * sizeof(char));
+            memcpy(buffer[*end], block, (BLOCK_SIZE + 1) * sizeof(char));
             *end = (*end + 1) % BUFFER_SIZE;
             V(sem1);
             c = fread(block, 1, BLOCK_SIZE, input);
             block[c] = '\0';
         }
         P(sem2);
-        buffer = (char *)shmat(shmid_b[*end], 0, 0);
-        memcpy(buffer, block, (BLOCK_SIZE + 1) * sizeof(char));
+        memcpy(buffer[*end], block, (BLOCK_SIZE + 1) * sizeof(char));
         *end = (*end + 1) % BUFFER_SIZE;
         V(sem1);
         *status = 0;
@@ -101,7 +106,7 @@ int main(int argc, char const *argv[])
     sem_destroy(sem2);
     fclose(input);
     fclose(output);
-    for(int i = 0; i < BUFFER_SIZE; i++)
+    for (int i = 0; i < BUFFER_SIZE; i++)
     {
         shmctl(shmid_b[i], IPC_RMID, 0);
     }
